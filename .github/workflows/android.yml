@@ -18,16 +18,21 @@ jobs:
         distribution: 'temurin'
         java-version: '17'
 
-    # 👉 ЭТОТ ШАГ ФИКСИРУЕТ ВЕРСИЮ GRADLE ИЗ ВАШЕГО ПРОЕКТА
-    - name: Validate Gradle Wrapper
-      uses: gradle/wrapper-validation-action@v2
+    # 👉 ЭТОТ ШАГ УСТАНАВЛИВАЕТ ТУ ВЕРСИЮ GRADLE, КОТОРАЯ ПРОПИСАНА В ВАШЕМ ПРОЕКТЕ (7.6.3)
+    - name: Setup Gradle
+      uses: gradle/actions/setup-gradle@v3
 
     - name: Grant execute permission for gradlew
       run: chmod +x gradlew
 
-    # Сборка через ваш gradlew (теперь он точно подхватит Gradle 7.6.3 или 8.5)
     - name: Build Debug APK
       run: ./gradlew assembleDebug
+
+    - name: Upload APK Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: app-debug
+        path: app/build/outputs/apk/debug/app-debug.apk
 
     - name: Upload APK Artifact
       uses: actions/upload-artifact@v4
