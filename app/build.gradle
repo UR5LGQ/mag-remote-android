@@ -35,10 +35,9 @@ dependencies {
     implementation 'androidx.appcompat:appcompat:1.6.1'
     implementation 'com.google.android.material:material:1.11.0'
 
-    // Подключаем NewPipeExtractor через JitPack
-    // Замените master-SNAPSHOT на актуальный тег, например 'v0.22.0' при стабильном релизе
-    implementation 'com.github.TeamNewPipe:NewPipeExtractor:v0.26.5'
+    // Используем актуальную и стабильную версию NewPipeExtractor
+    implementation 'com.github.TeamNewPipe:NewPipeExtractor:v0.22.6'
     
-    // Gson для удобной сериализации ответов в JSON для JavaScript
+    // Gson для сериализации
     implementation 'com.google.code.gson:gson:2.10.1'
 }
