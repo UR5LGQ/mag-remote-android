@@ -70,16 +70,19 @@ class MainActivity : AppCompatActivity() {
         fun searchVideos(query: String, callbackName: String) {
             executor.execute {
                 try {
-                    // Используем прямой вызов YouTube сервиса для поиска
                     val ytService = YoutubeService(0)
                     val searchExtractor = ytService.getSearchExtractor(query)
                     searchExtractor.fetchPage()
                     
                     val resultsList = searchExtractor.initialPage.items.take(10).map { item ->
+                        val videoTitle = try { item.name } catch (e: Exception) { "Видео" }
+                        val videoUrl = try { item.url } catch (e: Exception) { "" }
+                        val thumbUrl = try { item.thumbnailUrl } catch (e: Exception) { "" }
+
                         mapOf(
-                            "id" to item.url.substringAfter("v=").substringBefore("&"),
-                            "title" to item.title,
-                            "thumbnail" to item.thumbnailUrl,
+                            "id" to videoUrl.substringAfter("v=").substringBefore("&"),
+                            "title" to videoTitle,
+                            "thumbnail" to thumbUrl,
                             "type" to "video"
                         )
                     }
