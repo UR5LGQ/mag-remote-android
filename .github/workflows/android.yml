@@ -18,19 +18,14 @@ jobs:
         distribution: 'temurin'
         java-version: '17'
 
-    - name: Cache Gradle packages
-      uses: actions/cache@v4
-      with:
-        path: |
-          ~/.gradle/caches
-          ~/.gradle/wrapper
-        key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
-        restore-keys: |
-          ${{ runner.os }}-gradle-
+    # 👉 ЭТОТ ШАГ ФИКСИРУЕТ ВЕРСИЮ GRADLE ИЗ ВАШЕГО ПРОЕКТА
+    - name: Validate Gradle Wrapper
+      uses: gradle/wrapper-validation-action@v2
 
     - name: Grant execute permission for gradlew
       run: chmod +x gradlew
 
+    # Сборка через ваш gradlew (теперь он точно подхватит Gradle 7.6.3 или 8.5)
     - name: Build Debug APK
       run: ./gradlew assembleDebug
 
