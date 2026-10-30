@@ -1,0 +1,1285 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Пульт управления ТВ</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+        body { font-family: Arial, sans-serif; margin: 0; padding: 15px; background: #141414; color: #fff; }
+        .status-bar { display: flex; justify-content: space-between; align-items: center; font-size: 14px; margin-bottom: 15px; padding: 8px 12px; background: #222; border-radius: 8px; }
+        .status-online { color: #2ecc71; font-weight: bold; }
+        .status-offline { color: #e74c3c; font-weight: bold; }
+        .settings-gear { color: #aaa; font-size: 18px; text-decoration: none; cursor: pointer; transition: color 0.2s; }
+        .settings-gear:hover { color: #fff; }
+        
+        .mode-switch { display: flex; gap: 10px; margin-bottom: 15px; }
+        .mode-btn { flex: 1; padding: 12px; font-size: 16px; font-weight: bold; border-radius: 8px; border: none; cursor: pointer; background: #333; color: #fff; }
+        .mode-btn.active { background: #e50914; }
+
+        .search-box { display: flex; flex-direction: column; gap: 10px; margin-bottom: 20px; }
+        input { width: 100%; box-sizing: border-box; padding: 15px; font-size: 20px; border-radius: 10px; border: 1px solid #444; background: #222; color: #fff; }
+        .search-btn { width: 100%; box-sizing: border-box; padding: 15px; font-size: 20px; font-weight: bold; background: #e50914; color: white; border: none; border-radius: 10px; cursor: pointer; }
+        
+        #results-container { display: flex; flex-direction: column; gap: 20px; }
+        /* Карточка видео: вертикальное расположение (картинка сверху, текст снизу) на всю ширину */
+        .video-card { display: flex; flex-direction: column; background: #222; padding: 12px; border-radius: 12px; cursor: pointer; width: 100%; box-sizing: border-box; }
+        .video-card img { width: 100%; height: auto; aspect-ratio: 16/9; object-fit: cover; border-radius: 8px; margin-bottom: 10px; }
+        .video-title { font-size: 16px; font-weight: bold; line-height: 1.3; text-align: left; }
+        
+        #remote-screen, #iptv-remote-screen, #iptv-list-screen { display: none; text-align: center; padding-top: 10px; }
+        .btn { width: 100%; padding: 20px; margin: 10px 0; font-size: 22px; font-weight: bold; border-radius: 15px; border: none; cursor: pointer; color: white; }
+        .play-pause-btn { background: #ff9800; }
+        .ch-btn { background: #9b59b6; padding: 18px; font-size: 20px; width: 47%; margin: 0; }
+        .stop { background: #f44336; }
+        .row-container { display: flex; justify-content: space-between; gap: 10px; margin: 10px 0; }
+        .vol { width: 47%; background: #2196F3; padding: 18px; font-size: 20px; margin: 0; }
+        #loading { display: none; text-align: center; font-size: 22px; color: #aaa; margin: 20px 0; }
+
+        /* Элементы списка IPTV каналов */
+        .channel-card { display: flex; align-items: center; background: #222; padding: 15px; border-radius: 10px; cursor: pointer; margin-bottom: 10px; text-align: left; }
+        .channel-card:active { background: #ffaa00; color: #000; }
+        .channel-title { font-size: 18px; font-weight: bold; }
+		
+		/* Прогресс-бар на пульте */
+        #phone-progress-container {
+            width: 100%;
+            height: 18px;
+            background: #222;
+            border: 2px solid #00f0ff;
+            border-radius: 9px;
+            overflow: hidden;
+            margin: 15px 0;
+            display: none;
+            position: relative;
+            box-shadow: 0 0 10px rgba(0, 240, 255, 0.4);
+        }
+        #phone-progress-bar {
+            width: 0%;
+            height: 100%;
+            background-color: #00f0ff;
+            transition: width 0.5s linear, background-color 0.3s ease;
+        }
+        #phone-progress-text {
+            position: absolute;
+            width: 100%;
+            top: 0;
+            left: 0;
+            text-align: center;
+            font-size: 11px;
+            font-weight: bold;
+            color: #fff;
+            line-height: 14px;
+            text-shadow: 0 0 3px #000;
+        }
+    </style>
+</head>
+<body>
+
+<div class="status-bar">
+    <div>Приставка: <span id="stb-status" class="status-offline">Проверка...</span></div>
+    <a href="#" onclick="openSettings(); return false;" class="settings-gear" title="Настройки">⚙️</a>
+</div>
+
+<!-- Переключатель режима -->
+<div class="mode-switch">
+    <button id="btn-yt" class="mode-btn active" onclick="switchPortalMode('youtube')">YouTube</button>
+    <button id="btn-iptv" class="mode-btn" onclick="switchPortalMode('iptv')">IPTV Portal</button>
+	<button id="btn-kinogo" class="mode-btn" onclick="switchPortalMode('kinogo')">Kinogo</button>
+</div>
+
+<!-- Блок авторизации OAuth -->
+<div id="auth-screen" style="display: none; text-align: center; background: #222; padding: 20px; border-radius: 12px; margin-bottom: 20px; border: 1px solid #ff9800;">
+    <h3 style="margin-top: 0; color: #ff9800;">🔐 Требуется авторизация в YouTube</h3>
+    <p style="font-size: 16px; color: #ccc;">Перейдите по ссылке и введите код ниже:</p>
+    
+    <div id="auth-code" style="font-size: 32px; font-weight: bold; letter-spacing: 4px; color: #4CAF50; margin: 15px 0; padding: 10px; background: #111; border-radius: 8px;">--------</div>
+    
+    <a id="auth-link" href="#" target="_blank" class="search-btn" style="display: inline-block; text-decoration: none; text-align: center; padding: 12px 20px; margin-bottom: 15px; background: #2196F3;">Открыть страницу Google</a>
+    
+    <p style="font-size: 14px; color: #aaa; margin-bottom: 0;">После ввода кода в Google эта страница обновится автоматически.</p>
+</div>
+
+<!-- ПОИСК YOUTUBE -->
+<div id="search-screen">
+    <div class="search-box">
+        <input type="text" id="query" placeholder="Что хотите посмотреть?">
+        <button class="search-btn" onclick="doSearch()">🔎 НАЙТИ</button>
+    </div>
+	
+    <div id="loading">Идет поиск, подождите...</div>
+    <div id="results-container"></div>
+</div>
+
+<!-- ПУЛЬТ YOUTUBE -->
+<div id="remote-screen">
+    <h2 style="font-size: 24px; color: #4CAF50; margin-bottom: 25px;">📺 ИДЕТ ПРОСМОТР YOUTUBE</h2>
+	<div id="yt-current-title" style="font-size: 16px; color: #fff; margin-bottom: 15px; font-weight: bold; background: #222; padding: 10px; border-radius: 8px;">Название не определено</div>
+	<!-- Универсальный прогресс-бар скачивания на пульте -->
+    <div id="phone-progress-container">
+        <div id="phone-progress-text">0 / 30 сек</div>
+        <div id="phone-progress-bar"></div>
+    </div>
+	
+    <div id="player-state" style="font-size: 18px; color: #FFC107; margin-bottom: 20px;">⏳ Буферизация / Загрузка...</div>
+   
+<div style="margin: 20px 0; background: #222; padding: 15px; border-radius: 12px;">
+        <div style="display: flex; justify-content: space-between; font-size: 14px; margin-bottom: 8px; color: #aaa;">
+            <span id="current-time">00:00</span>
+            <span id="duration-time">00:00</span>
+        </div>
+        <div id="progress-container" style="width: 100%; height: 14px; background: #444; border-radius: 7px; cursor: pointer; position: relative; touch-action: none;" onpointerdown="onProgressDown(event)">
+            <div id="progress-bar" style="width: 0%; height: 100%; background: #e50914; border-radius: 7px; pointer-events: none;"></div>
+        </div>
+    </div>
+
+    <button id="yt-play-pause-btn" class="btn play-pause-btn" onclick="toggleYoutubePlayPause()">⏸ ПАУЗА</button>
+
+    <div class="row-container">
+        <button class="btn vol" onclick="send('volume', 'down')">🔉 ТИШЕ</button>
+        <button class="btn vol" onclick="send('volume', 'up')">🔊 ГРОМЧЕ</button>
+    </div>
+
+    <button class="btn stop" onclick="send('stop')">⏹ НАЗАД К ПОИСКУ</button>
+</div>
+
+<!-- СПИСОК IPTV КАНАЛОВ -->
+<div id="iptv-list-screen">
+    <h2 style="font-size: 22px; color: #ffaa00; margin-bottom: 15px;">📺 ВЫБОР IPTV КАНАЛА</h2>
+    <div id="iptv-loading" style="font-size: 18px; color: #aaa; margin: 20px 0;">Загрузка списка каналов...</div>
+    <div id="iptv-list-container"></div>
+</div>
+
+<!-- ПУЛЬТ IPTV -->
+<div id="iptv-remote-screen">
+    <h2 style="font-size: 22px; color: #ffaa00; margin-bottom: 15px;">📺 РЕЖИМ: IPTV</h2>
+    <div id="iptv-current-title" style="font-size: 16px; color: #fff; margin-bottom: 15px; font-weight: bold; background: #222; padding: 10px; border-radius: 8px;">Канал не выбран</div>
+    <button class="btn" style="background: #2c3e50; padding: 15px; font-size: 18px;" onclick="showIptvList()">📋 СПИСОК КАНАЛОВ</button>
+
+    <div class="row-container">
+        <button class="btn ch-btn" onclick="changeChannel(-1)">⏮ Ch-</button>
+        <button class="btn ch-btn" onclick="changeChannel(1)">⏭ Ch+</button>
+    </div>
+
+    <button id="iptv-play-pause-btn" class="btn play-pause-btn" onclick="toggleIptvPlayPause()">⏸ ПАУЗА</button>
+
+    <div class="row-container">
+        <button class="btn vol" onclick="send('volume', 'down')">🔉 ТИШЕ</button>
+        <button class="btn vol" onclick="send('volume', 'up')">🔊 ГРОМЧЕ</button>
+    </div>
+
+    <button class="btn stop" onclick="send('stop')">⏹ СТОП</button>
+</div>
+
+<!-- СПИСОК KINOGO -->
+<div id="kinogo-list-screen" style="display: none; text-align: center;">
+    <h2 style="font-size: 22px; color: #e50914; margin-bottom: 15px;">🎬 КАТАЛОГ KINOGO</h2>
+    <div id="kinogo-loading" style="font-size: 18px; color: #aaa; margin: 20px 0;">Загрузка плейлиста Kinogo...</div>
+    <div id="kinogo-list-container"></div>
+</div>
+
+<!-- ПУЛЬТ KINOGO -->
+<div id="kinogo-remote-screen" style="display: none; text-align: center;">
+    <h2 style="font-size: 22px; color: #e50914; margin-bottom: 15px;">🎬 РЕЖИМ: KINOGO</h2>
+    <div id="kinogo-current-title" style="font-size: 16px; color: #fff; margin-bottom: 15px; font-weight: bold; background: #222; padding: 10px; border-radius: 8px;">Фильм не выбран</div>
+    <button class="btn" style="background: #2c3e50; padding: 15px; font-size: 18px;" onclick="showKinogoList()">📋 СПИСОК ФИЛЬМОВ</button>
+
+    <div style="margin: 20px 0; background: #222; padding: 15px; border-radius: 12px;">
+        <div style="display: flex; justify-content: space-between; font-size: 14px; margin-bottom: 8px; color: #aaa;">
+            <span id="kinogo-current-time">00:00</span>
+            <span id="kinogo-duration-time">00:00</span>
+        </div>
+        <div id="kinogo-progress-container" style="width: 100%; height: 14px; background: #444; border-radius: 7px; cursor: pointer; position: relative; touch-action: none;" onpointerdown="onKinogoProgressDown(event)">
+            <div id="kinogo-progress-bar" style="width: 0%; height: 100%; background: #e50914; border-radius: 7px; pointer-events: none;"></div>
+        </div>
+    </div>
+
+    <div class="row-container">
+        <button class="btn ch-btn" onclick="changeKinogoItem(-1)">⏮ Назад</button>
+        <button class="btn ch-btn" onclick="changeKinogoItem(1)">Вперед ⏭</button>
+    </div>
+
+    <button id="kinogo-play-pause-btn" class="btn play-pause-btn" onclick="toggleKinogoPlayPause()">⏸ ПАУЗА</button>
+
+    <div class="row-container">
+        <button class="btn vol" onclick="send('volume', 'down')">🔉 ТИШЕ</button>
+        <button class="btn vol" onclick="send('volume', 'up')">🔊 ГРОМЧЕ</button>
+    </div>
+
+    <button class="btn stop" onclick="send('stop')">⏹ СТОП</button>
+</div>
+
+<script>
+// Переменная адреса сервера
+var ADRESSE_SEVER = 'http://138.3.253.85:8080';
+
+// Глобальные переменные пульта
+var activeMode = 'youtube';
+var iptvChannels = [];
+var currentChannelIndex = 0;
+var isIptvPaused = false;
+var isYoutubePaused = false;
+var playlistUrl = 'https://ur5lgq-iptv-transcoder.hf.space/playlist.m3u';
+var isInitialCheckDone = false;
+var isLoadingPlaylist = false;
+
+var authPollInterval = null;
+
+var kinogoChannels = [];
+var currentKinogoIndex = 0;
+var isKinogoPaused = false;
+var kinogoPlaylistUrl = ADRESSE_SEVER + '/kinogo.m3u8';
+
+// Переменные для локального отсчета прогресс-бара на пульте
+var phoneProgressTimer = null;
+var phoneSeconds = 0;
+var lastDownloadState = "idle";
+
+// Переменные поиска YouTube / Плейлистов
+let currentQuery = '';
+let currentNextPageToken = '';
+let currentPlaylistId = '';
+let currentPlaylistNextPageToken = '';
+let lastSearchResults = [];
+
+function handlePhoneProgressState(state) {
+    var container = document.getElementById('phone-progress-container');
+    var bar = document.getElementById('phone-progress-bar');
+    var text = document.getElementById('phone-progress-text');
+    if (!container || !bar || !text) return;
+
+    if (state === 'searching' || state === 'loading' || state === 'success') {
+        container.style.display = 'block';
+
+        if (state === 'searching') {
+            bar.style.backgroundColor = '#ffb6c1';
+        } else if (state === 'loading') {
+            bar.style.backgroundColor = '#00f0ff';
+        } else if (state === 'success') {
+            bar.style.backgroundColor = '#2ecc71';
+        }
+
+        if (!phoneProgressTimer) {
+            if (lastDownloadState === 'idle' || lastDownloadState === 'error') {
+                phoneSeconds = 0;
+            }
+
+            phoneProgressTimer = setInterval(function() {
+                phoneSeconds++;
+                if (phoneSeconds > 30) phoneSeconds = 30;
+                
+                var pct = (phoneSeconds / 30) * 100;
+                bar.style.width = pct + '%';
+                
+                if (lastDownloadState === 'searching') {
+                    text.innerText = phoneSeconds + ' / 30 сек (Поиск ссылки...)';
+                } else if (lastDownloadState === 'success') {
+                    text.innerText = phoneSeconds + ' / 30 сек (Успешно, скачивание...)';
+                } else {
+                    text.innerText = phoneSeconds + ' / 30 сек (Загрузка...)';
+                }
+
+                if (phoneSeconds >= 30) {
+                    clearInterval(phoneProgressTimer);
+                    phoneProgressTimer = null;
+                }
+            }, 1000);
+        }
+
+    } else if (state === 'error') {
+        if (phoneProgressTimer) {
+            clearInterval(phoneProgressTimer);
+            phoneProgressTimer = null;
+        }
+        container.style.display = 'block';
+        bar.style.backgroundColor = '#e74c3c';
+        bar.style.width = '100%';
+        text.innerText = 'Ошибка получения ссылки!';
+        setTimeout(function() { container.style.display = 'none'; }, 4000);
+
+    } else {
+        if (phoneProgressTimer) {
+            clearInterval(phoneProgressTimer);
+            phoneProgressTimer = null;
+        }
+        container.style.display = 'none';
+    }
+    
+    lastDownloadState = state;
+}
+
+function openSettings() {
+    var url = '';
+    if (activeMode === 'youtube') {
+        url = 'https://m.youtube.com/#searching';
+    } else if (activeMode === 'kinogo') {
+        url = 'https://u.kinogo.org/';
+    } else {
+        url = 'https://ur5lgq-iptv-transcoder.hf.space/';
+    }
+    window.open(url, '_blank');
+}
+
+async function checkOAuthStatus() {
+    try {
+        const res = await fetch(ADRESSE_SEVER + '/auth/status');
+        const data = await res.json();
+        
+        const authScreen = document.getElementById('auth-screen');
+        
+        if (!data.authorized) {
+            if (authScreen) authScreen.style.display = 'block';
+            const codeEl = document.getElementById('auth-code');
+            if (codeEl && codeEl.textContent === '--------') {
+                startOAuthFlow();
+            }
+        } else {
+            if (authScreen) authScreen.style.display = 'none';
+            if (authPollInterval) {
+                clearInterval(authPollInterval);
+                authPollInterval = null;
+            }
+        }
+    } catch (e) {
+        console.error('Ошибка проверки статуса OAuth:', e);
+    }
+}
+
+async function startOAuthFlow() {
+    try {
+        const res = await fetch(ADRESSE_SEVER + '/auth/start');
+        const data = await res.json();
+        if (data.ok) {
+            document.getElementById('auth-code').textContent = data.user_code;
+            const linkEl = document.getElementById('auth-link');
+            linkEl.href = data.verification_url;
+            
+            if (!authPollInterval) {
+                authPollInterval = setInterval(checkOAuthStatus, 3000);
+            }
+        }
+    } catch (e) {
+        console.error('Ошибка при старте авторизации:', e);
+    }
+}
+
+checkOAuthStatus();
+
+function hideAllScreens() {
+    document.getElementById('search-screen').style.display = 'none';
+    document.getElementById('remote-screen').style.display = 'none';
+    document.getElementById('iptv-list-screen').style.display = 'none';
+    document.getElementById('iptv-remote-screen').style.display = 'none';
+    document.getElementById('kinogo-list-screen').style.display = 'none';
+    document.getElementById('kinogo-remote-screen').style.display = 'none';
+}
+
+async function switchPortalMode(mode) {
+    activeMode = mode;
+    
+    document.getElementById('btn-yt').className = (mode === 'youtube') ? 'mode-btn active' : 'mode-btn';
+    document.getElementById('btn-iptv').className = (mode === 'iptv') ? 'mode-btn active' : 'mode-btn';
+    document.getElementById('btn-kinogo').className = (mode === 'kinogo') ? 'mode-btn active' : 'mode-btn';
+
+    hideAllScreens();
+
+    if (mode === 'youtube') {
+        document.getElementById('search-screen').style.display = 'block';
+    } else if (mode === 'iptv') {
+        document.getElementById('iptv-list-screen').style.display = 'block';
+        if (!iptvChannels.length) {
+            loadIptvPlaylist();
+        }
+    } else if (mode === 'kinogo') {
+        document.getElementById('kinogo-list-screen').style.display = 'block';
+        if (!kinogoChannels.length) {
+            loadKinogoPlaylist();
+        }
+    }
+
+    await send('switch_mode', mode);
+}
+
+async function loadKinogoPlaylist() {
+    var loadingEl = document.getElementById('kinogo-loading');
+    if (loadingEl) {
+        loadingEl.style.display = 'block';
+        loadingEl.textContent = 'Загрузка плейлиста Kinogo...';
+    }
+
+    try {
+        const res = await fetch(kinogoPlaylistUrl);
+        const text = await res.text();
+        parseKinogoM3U(text);
+    } catch (err) {
+        if (loadingEl) loadingEl.textContent = 'Ошибка загрузки плейлиста Kinogo';
+    }
+}
+
+function parseKinogoM3U(text) {
+    var lines = text.split("\n");
+    var parsed = [];
+    var name = "";
+
+    for (var i = 0; i < lines.length; i++) {
+        var line = lines[i].trim();
+        if (line.indexOf("#EXTINF:") === 0) {
+            var comma = line.lastIndexOf(",");
+            name = (comma !== -1) ? line.substring(comma + 1).trim() : "Фильм";
+        } else if (line.length > 0 && line.indexOf("#") !== 0) {
+            if (!name) name = "Видео " + (parsed.length + 1);
+            parsed.push({ title: name, url: line });
+            name = "";
+        }
+    }
+
+    kinogoChannels = parsed;
+    renderKinogoChannels();
+}
+
+function renderKinogoChannels() {
+    var loadingEl = document.getElementById('kinogo-loading');
+    if (loadingEl) loadingEl.style.display = 'none';
+
+    var container = document.getElementById('kinogo-list-container');
+    container.innerHTML = "";
+
+    if (!kinogoChannels.length) {
+        if (loadingEl) {
+            loadingEl.style.display = 'block';
+            loadingEl.textContent = 'Элементы не найдены в плейлисте';
+        }
+        return;
+    }
+
+    kinogoChannels.forEach((ch, index) => {
+        var card = document.createElement('div');
+        card.className = 'channel-card';
+        card.onclick = () => selectKinogoItem(index);
+
+        var title = document.createElement('div');
+        title.className = 'channel-title';
+        title.textContent = (index + 1) + '. ' + ch.title;
+
+        card.appendChild(title);
+        container.appendChild(card);
+    });
+}
+
+async function selectKinogoItem(index) {
+    currentKinogoIndex = index;
+    isKinogoPaused = false;
+    updateKinogoPauseButton();
+
+    var ch = kinogoChannels[index];
+    if (ch && ch.url) {
+        try {
+            await fetch(ADRESSE_SEVER + '/control?action=load&val=' + encodeURIComponent(ch.url) + '&title=' + encodeURIComponent(ch.title));
+        } catch (e) {
+            console.error('Ошибка запуска фильма:', e);
+        }
+    }
+
+    document.getElementById('kinogo-list-screen').style.display = 'none';
+    document.getElementById('kinogo-remote-screen').style.display = 'block';
+}
+
+function showKinogoList() {
+    document.getElementById('kinogo-remote-screen').style.display = 'none';
+    document.getElementById('kinogo-list-screen').style.display = 'block';
+    if (!kinogoChannels.length) {
+        loadKinogoPlaylist();
+    }
+}
+
+async function changeKinogoItem(direction) {
+    if (!kinogoChannels || kinogoChannels.length === 0) return;
+
+    currentKinogoIndex += direction;
+    if (currentKinogoIndex < 0) {
+        currentKinogoIndex = kinogoChannels.length - 1;
+    } else if (currentKinogoIndex >= kinogoChannels.length) {
+        currentKinogoIndex = 0;
+    }
+
+    var ch = kinogoChannels[currentKinogoIndex];
+    if (!ch || !ch.url) return;
+
+    try {
+        await fetch(ADRESSE_SEVER + '/control?action=load&val=' + encodeURIComponent(ch.url) + '&title=' + encodeURIComponent(ch.title));
+    } catch (e) {
+        console.error('Ошибка переключения:', e);
+    }
+}
+
+async function toggleKinogoPlayPause() {
+    if (isKinogoPaused) {
+        await send('play');
+        isKinogoPaused = false;
+    } else {
+        await send('pause');
+        isKinogoPaused = true;
+    }
+    updateKinogoPauseButton();
+}
+
+function updateKinogoPauseButton() {
+    var btn = document.getElementById('kinogo-play-pause-btn');
+    if (!btn) return;
+
+    if (isKinogoPaused) {
+        btn.textContent = "▶ ПЛЕЙ";
+        btn.style.background = "#4CAF50";
+    } else {
+        btn.textContent = "⏸ ПАУЗА";
+        btn.style.background = "#FF9800";
+    }
+}
+
+async function loadIptvPlaylist() {
+    if (isLoadingPlaylist) return;
+    isLoadingPlaylist = true;
+
+    var loadingEl = document.getElementById('iptv-loading');
+    if (loadingEl) {
+        loadingEl.style.display = 'block';
+        loadingEl.textContent = 'Загрузка списка каналов...';
+    }
+
+    try {
+        const res = await fetch(playlistUrl);
+        const text = await res.text();
+        parseM3U(text);
+    } catch (err) {
+        if (loadingEl) loadingEl.textContent = 'Ошибка загрузки плейлиста';
+    } finally {
+        isLoadingPlaylist = false;
+    }
+}
+
+function parseM3U(text) {
+    var lines = text.split("\n");
+    var parsed = [];
+    var name = "";
+
+    for (var i = 0; i < lines.length; i++) {
+        var line = lines[i].trim();
+        if (line.indexOf("#EXTINF:") === 0) {
+            var comma = line.lastIndexOf(",");
+            name = (comma !== -1) ? line.substring(comma + 1).trim() : "Без названия";
+        } else if (line.length > 0 && line.indexOf("#") !== 0) {
+            if (!name) name = "Канал " + (parsed.length + 1);
+            parsed.push({ title: name, url: line });
+            name = "";
+        }
+    }
+
+    iptvChannels = parsed;
+    renderIptvChannels();
+}
+
+function renderIptvChannels() {
+    var loadingEl = document.getElementById('iptv-loading');
+    if (loadingEl) loadingEl.style.display = 'none';
+
+    var container = document.getElementById('iptv-list-container');
+    container.innerHTML = "";
+
+    if (!iptvChannels.length) {
+        if (loadingEl) {
+            loadingEl.style.display = 'block';
+            loadingEl.textContent = 'Каналы не найдены';
+        }
+        return;
+    }
+
+    iptvChannels.forEach((ch, index) => {
+        var card = document.createElement('div');
+        card.className = 'channel-card';
+        card.onclick = () => selectIptvChannel(index);
+
+        var title = document.createElement('div');
+        title.className = 'channel-title';
+        title.textContent = (index + 1) + '. ' + ch.title;
+
+        card.appendChild(title);
+        container.appendChild(card);
+    });
+}
+
+async function selectIptvChannel(index) {
+    currentChannelIndex = index;
+    isIptvPaused = false;
+    updateIptvPauseButton();
+
+    var ch = iptvChannels[index];
+    if (ch && ch.url) {
+        try {
+            await fetch(ADRESSE_SEVER + '/control?action=load&val=' + encodeURIComponent(ch.url) + '&title=' + encodeURIComponent(ch.title));
+        } catch (e) {
+            console.error('Ошибка выбора канала:', e);
+        }
+    }
+
+    document.getElementById('iptv-list-screen').style.display = 'none';
+    document.getElementById('iptv-remote-screen').style.display = 'block';
+}
+
+async function changeChannel(direction) {
+    if (!iptvChannels || iptvChannels.length === 0) {
+        await loadIptvPlaylist();
+        if (!iptvChannels || iptvChannels.length === 0) return;
+    }
+
+    currentChannelIndex += direction;
+    if (currentChannelIndex < 0) {
+        currentChannelIndex = iptvChannels.length - 1;
+    } else if (currentChannelIndex >= iptvChannels.length) {
+        currentChannelIndex = 0;
+    }
+
+    var ch = iptvChannels[currentChannelIndex];
+    if (!ch || !ch.url) return;
+
+    isIptvPaused = false;
+    updateIptvPauseButton();
+
+    try {
+        await fetch(ADRESSE_SEVER + '/control?action=load&val=' + encodeURIComponent(ch.url) + '&title=' + encodeURIComponent(ch.title));
+    } catch (e) {
+        console.error('Ошибка переключения канала:', e);
+    }
+}
+
+async function toggleIptvPlayPause() {
+    if (isIptvPaused) {
+        await send('play');
+        isIptvPaused = false;
+    } else {
+        await send('pause');
+        isIptvPaused = true;
+    }
+    updateIptvPauseButton();
+}
+
+function updateIptvPauseButton() {
+    var btn = document.getElementById('iptv-play-pause-btn');
+    if (!btn) return;
+
+    if (isIptvPaused) {
+        btn.textContent = "▶ ПЛЕЙ";
+        btn.style.background = "#4CAF50";
+    } else {
+        btn.textContent = "⏸ ПАУЗА";
+        btn.style.background = "#FF9800";
+    }
+}
+
+async function toggleYoutubePlayPause() {
+    if (isYoutubePaused) {
+        await send('play');
+        isYoutubePaused = false;
+    } else {
+        await send('pause');
+        isYoutubePaused = true;
+    }
+    updateYoutubePauseButton();
+}
+
+function updateYoutubePauseButton() {
+    var btn = document.getElementById('yt-play-pause-btn');
+    if (!btn) return;
+
+    if (isYoutubePaused) {
+        btn.textContent = "▶ ПЛЕЙ";
+        btn.style.background = "#4CAF50";
+    } else {
+        btn.textContent = "⏸ ПАУЗА";
+        btn.style.background = "#FF9800";
+    }
+}
+
+function showIptvList() {
+    document.getElementById('iptv-remote-screen').style.display = 'none';
+    document.getElementById('iptv-list-screen').style.display = 'block';
+    if (!iptvChannels.length) {
+        loadIptvPlaylist();
+    }
+}
+
+async function send(action, val) {
+    if (action === 'stop') {
+        if (activeMode === 'youtube') {
+            document.getElementById('remote-screen').style.display = 'none';
+            document.getElementById('search-screen').style.display = 'block';
+            isYoutubePaused = false;
+            updateYoutubePauseButton();
+        } else if (activeMode === 'iptv') {
+            document.getElementById('iptv-remote-screen').style.display = 'none';
+            document.getElementById('iptv-list-screen').style.display = 'block';
+        } else if (activeMode === 'kinogo') {
+            document.getElementById('kinogo-remote-screen').style.display = 'none';
+            document.getElementById('kinogo-list-screen').style.display = 'block';
+        }
+    }
+
+    let url = ADRESSE_SEVER + '/control?action=' + encodeURIComponent(action);
+    if (val !== undefined && val !== null) url += '&val=' + encodeURIComponent(val);
+
+    try {
+        await fetch(url);
+    } catch (err) {
+        console.error('Ошибка отправки команды:', err);
+    }
+}
+
+async function startVideo(id, title, thumbnail) {
+    document.getElementById('search-screen').style.display = 'none';
+    document.getElementById('remote-screen').style.display = 'block';
+    
+    isYoutubePaused = false;
+    updateYoutubePauseButton();
+
+    const stateEl = document.getElementById('player-state');
+    if (stateEl) stateEl.textContent = '⏳ Подготовка и скачивание видео...';
+    
+    try {
+        let url = ADRESSE_SEVER + '/control?action=load&val=' + encodeURIComponent(id);
+        if (title) url += '&title=' + encodeURIComponent(title);
+        if (thumbnail) url += '&thumbnail=' + encodeURIComponent(thumbnail);
+        
+        const res = await fetch(url);
+        const result = await res.json();
+
+        if (!result.ok) {
+            document.getElementById('remote-screen').style.display = 'none';
+            document.getElementById('search-screen').style.display = 'block';
+            alert('Не удалось запустить видео: ' + (result.error || 'Ошибка'));
+        }
+    } catch (err) {
+        document.getElementById('remote-screen').style.display = 'none';
+        document.getElementById('search-screen').style.display = 'block';
+        alert('Ошибка связи: ' + err.message);
+    }
+}
+
+function formatTime(seconds) {
+    var sec = Math.floor(parseFloat(seconds) || 0);
+    if (sec <= 0) return "00:00";
+    var m = Math.floor(sec / 60);
+    var s = sec % 60;
+    return (m < 10 ? "0" + m : m) + ":" + (s < 10 ? "0" + s : s);
+}
+
+async function checkFullStatus() {
+    var data = null;
+    try {
+        const res = await fetch(ADRESSE_SEVER + '/status?t=' + Date.now());
+        if (res.ok) {
+            data = await res.json();
+        }
+    } catch (e) {
+        console.error("Ошибка запроса статуса:", e);
+    }
+
+    const statusEl = document.getElementById('stb-status');
+
+    if (data && data.stb_online === true) {
+        if (statusEl) {
+            statusEl.textContent = '🟢 ПОДКЛЮЧЕНА';
+            statusEl.className = 'status-online';
+        }
+		
+        if (data.download_state) {
+            handlePhoneProgressState(data.download_state);
+        }
+
+        if (data.is_playing) {
+            var progressContainer = document.getElementById('phone-progress-container');
+            if (progressContainer) progressContainer.style.display = 'none';
+            if (phoneProgressTimer) {
+                clearInterval(phoneProgressTimer);
+                phoneProgressTimer = null;
+            }
+        }
+
+        if (data.title) {
+            if (data.mode === 'youtube') {
+                var ytTitleEl = document.getElementById('yt-current-title');
+                if (ytTitleEl) ytTitleEl.textContent = data.title;
+            } else if (data.mode === 'iptv') {
+                var iptvTitleEl = document.getElementById('iptv-current-title');
+                if (iptvTitleEl) iptvTitleEl.textContent = data.title;
+            } else if (data.mode === 'kinogo') {
+                var kinogoTitleEl = document.getElementById('kinogo-current-title');
+                if (kinogoTitleEl) kinogoTitleEl.textContent = data.title;
+            }
+        }
+
+        if (data.mode === 'iptv' && !iptvChannels.length) {
+            loadIptvPlaylist();
+        } else if (data.mode === 'kinogo' && !kinogoChannels.length) {
+            loadKinogoPlaylist();
+        }
+
+        if (!isInitialCheckDone) {
+            isInitialCheckDone = true;
+            if (data.mode) {
+                activeMode = data.mode;
+                document.getElementById('btn-yt').className = (activeMode === 'youtube') ? 'mode-btn active' : 'mode-btn';
+                document.getElementById('btn-iptv').className = (activeMode === 'iptv') ? 'mode-btn active' : 'mode-btn';
+                document.getElementById('btn-kinogo').className = (activeMode === 'kinogo') ? 'mode-btn active' : 'mode-btn';
+            }
+
+            hideAllScreens();
+            if (activeMode === 'youtube') {
+                if (data.is_playing) {
+                    document.getElementById('remote-screen').style.display = 'block';
+                } else {
+                    document.getElementById('search-screen').style.display = 'block';
+                }
+            } else if (activeMode === 'iptv') {
+                if (data.is_playing) {
+                    document.getElementById('iptv-remote-screen').style.display = 'block';
+                } else {
+                    document.getElementById('iptv-list-screen').style.display = 'block';
+                    loadIptvPlaylist();
+                }
+            } else if (activeMode === 'kinogo') {
+                if (data.is_playing) {
+                    document.getElementById('kinogo-remote-screen').style.display = 'block';
+                } else {
+                    document.getElementById('kinogo-list-screen').style.display = 'block';
+                    loadKinogoPlaylist();
+                }
+            }
+        }
+
+        var curSec = parseFloat(data.currentTime) || 0;
+        var durSec = parseFloat(data.duration) || 0;
+        totalDuration = durSec; 
+
+        if (activeMode === 'youtube') {
+            const durEl = document.getElementById('duration-time');
+            if (durEl) durEl.textContent = formatTime(durSec);
+            if (!isSeeking) {
+                updateProgressBarUI(curSec, durSec);
+            }
+        } else if (activeMode === 'kinogo') {
+            const kinogoDurEl = document.getElementById('kinogo-duration-time');
+            if (kinogoDurEl) kinogoDurEl.textContent = formatTime(durSec);
+            if (!isSeeking) {
+                updateKinogoProgressBarUI(curSec, durSec);
+            }
+        }
+
+        const stateEl = document.getElementById('player-state');
+        if (stateEl && activeMode === 'youtube') {
+            if (data.is_playing) {
+                stateEl.textContent = '▶ Воспроизведение';
+                stateEl.style.color = '#4CAF50';
+            } else {
+                stateEl.textContent = '⏳ Буферизация / Загрузка...';
+                stateEl.style.color = '#FFC107';
+            }
+        }
+
+    } else {
+        if (statusEl) {
+            statusEl.textContent = '🔴 ОТКЛЮЧЕНА';
+            statusEl.className = 'status-offline';
+        }
+    }
+}
+
+var isSeeking = false;
+var totalDuration = 0;
+
+function updateKinogoProgressBarUI(curSec, durSec) {
+    const curEl = document.getElementById('kinogo-current-time');
+    const barEl = document.getElementById('kinogo-progress-bar');
+
+    if (curEl) curEl.textContent = formatTime(curSec);
+    if (barEl) {
+        if (durSec > 0) {
+            var pct = (curSec / durSec) * 100;
+            if (pct > 100) pct = 100;
+            if (pct < 0) pct = 0;
+            barEl.style.width = pct + '%';
+        } else {
+            barEl.style.width = '0%';
+        }
+    }
+}
+
+function onKinogoProgressDown(e) {
+    if (totalDuration <= 0) return;
+    isSeeking = true;
+    
+    var container = document.getElementById('kinogo-progress-container');
+    var seekSec = getSeekingPosition(e, container);
+    
+    updateKinogoProgressBarUI(seekSec, totalDuration);
+
+    window.addEventListener('pointermove', onKinogoProgressMove);
+    window.addEventListener('pointerup', onKinogoProgressUp);
+}
+
+function onKinogoProgressMove(e) {
+    if (!isSeeking || totalDuration <= 0) return;
+    var container = document.getElementById('kinogo-progress-container');
+    var seekSec = getSeekingPosition(e, container);
+    updateKinogoProgressBarUI(seekSec, totalDuration);
+}
+
+async function onKinogoProgressUp(e) {
+    if (!isSeeking) return;
+    isSeeking = false;
+    
+    window.removeEventListener('pointermove', onKinogoProgressMove);
+    window.removeEventListener('pointerup', onKinogoProgressUp);
+
+    var container = document.getElementById('kinogo-progress-container');
+    var seekSec = getSeekingPosition(e, container);
+
+    try {
+        await send('seek', Math.floor(seekSec));
+    } catch (err) {
+        console.error('Ошибка отправки команды перемотки Kinogo:', err);
+    }
+}
+
+function getSeekingPosition(e, container) {
+    var rect = container.getBoundingClientRect();
+    var clientX = e.clientX !== undefined ? e.clientX : (e.touches && e.touches[0] ? e.touches[0].clientX : 0);
+    var clickX = clientX - rect.left;
+    var width = rect.width;
+    
+    if (width <= 0) return 0;
+    var percent = clickX / width;
+    if (percent < 0) percent = 0;
+    if (percent > 1) percent = 1;
+    
+    return percent * totalDuration;
+}
+
+function onProgressDown(e) {
+    if (totalDuration <= 0) return;
+    isSeeking = true;
+    
+    var container = document.getElementById('progress-container');
+    var seekSec = getSeekingPosition(e, container);
+    
+    updateProgressBarUI(seekSec, totalDuration);
+
+    window.addEventListener('pointermove', onProgressMove);
+    window.addEventListener('pointerup', onProgressUp);
+}
+
+function onProgressMove(e) {
+    if (!isSeeking || totalDuration <= 0) return;
+    var container = document.getElementById('progress-container');
+    var seekSec = getSeekingPosition(e, container);
+    updateProgressBarUI(seekSec, totalDuration);
+}
+
+async function onProgressUp(e) {
+    if (!isSeeking) return;
+    isSeeking = false;
+    
+    window.removeEventListener('pointermove', onProgressMove);
+    window.removeEventListener('pointerup', onProgressUp);
+
+    var container = document.getElementById('progress-container');
+    var seekSec = getSeekingPosition(e, container);
+
+    try {
+        await send('seek', Math.floor(seekSec));
+    } catch (err) {
+        console.error('Ошибка отправки команды перемотки:', err);
+    }
+}
+
+function updateProgressBarUI(curSec, durSec) {
+    const curEl = document.getElementById('current-time');
+    const barEl = document.getElementById('progress-bar');
+
+    if (curEl) curEl.textContent = formatTime(curSec);
+    if (barEl) {
+        if (durSec > 0) {
+            var pct = (curSec / durSec) * 100;
+            if (pct > 100) pct = 100;
+            if (pct < 0) pct = 0;
+            barEl.style.width = pct + '%';
+        } else {
+            barEl.style.width = '0%';
+        }
+    }
+}
+
+// Поиск силами телефона через нативный мост Android
+async function doSearch(isLoadMore = false) {
+    const qInput = document.getElementById('query');
+    const q = qInput ? qInput.value.trim() : '';
+    if (!q) return;
+
+    if (!isLoadMore) {
+        currentQuery = q;
+        currentNextPageToken = '';
+        lastSearchResults = [];
+        document.getElementById('results-container').innerHTML = '';
+    }
+
+    const loadingEl = document.getElementById('loading');
+    if (loadingEl) loadingEl.style.display = 'block';
+
+    // Проверяем, есть ли связь с нативным кодом телефона
+    if (window.AndroidBridge && typeof window.AndroidBridge.searchVideos === 'function') {
+        window.AndroidBridge.searchVideos(currentQuery, 'onAndroidSearchResults');
+    } else {
+        if (loadingEl) loadingEl.style.display = 'none';
+        alert('AndroidBridge недоступен. Поиск работает только внутри приложения Android.');
+    }
+}
+
+// Функция-коллбэк для приема результатов от телефона
+function onAndroidSearchResults(jsonResult) {
+    const loadingEl = document.getElementById('loading');
+    if (loadingEl) loadingEl.style.display = 'none';
+
+    try {
+        const items = typeof jsonResult === 'string' ? JSON.parse(jsonResult) : jsonResult;
+        lastSearchResults = items;
+        renderItems(items, false);
+    } catch (err) {
+        console.error('Ошибка обработки результатов:', err);
+        alert('Ошибка при разборе результатов поиска');
+    }
+}
+
+async function openPlaylist(playlistId, playlistTitle, isLoadMore = false) {
+    const container = document.getElementById('results-container');
+
+    if (!isLoadMore) {
+        currentPlaylistId = playlistId;
+        currentPlaylistNextPageToken = '';
+
+        container.innerHTML = `
+            <div style="margin-bottom: 15px;">
+                <button class="search-btn" style="background:#555; margin-bottom:10px;" onclick="backToSearchResults()">⬅ Назад к результатам поиска</button>
+                <h3 style="margin:5px 0;">📁 Плейлист: ${playlistTitle}</h3>
+            </div>
+            <div id="playlist-items"></div>
+        `;
+    }
+
+    const loadingEl = document.getElementById('loading');
+    if (loadingEl) loadingEl.style.display = 'block';
+
+    try {
+        let url = ADRESSE_SEVER + `/playlist?id=${encodeURIComponent(currentPlaylistId)}`;
+        if (currentPlaylistNextPageToken) url += `&pageToken=${encodeURIComponent(currentPlaylistNextPageToken)}`;
+
+        const res = await fetch(url);
+        if (res.status === 401) {
+            window.location.href = ADRESSE_SEVER + '/phone.html';
+            return;
+        }
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+
+        const data = await res.json();
+        if (loadingEl) loadingEl.style.display = 'none';
+
+        currentPlaylistNextPageToken = data.nextPageToken || '';
+        renderPlaylistItems(data.items || []);
+        toggleLoadMoreButton('playlist', !!currentPlaylistNextPageToken);
+
+    } catch (err) {
+        if (loadingEl) loadingEl.style.display = 'none';
+        alert('Ошибка загрузки плейлиста: ' + err.message);
+    }
+}
+
+function backToSearchResults() {
+    const container = document.getElementById('results-container');
+    container.innerHTML = '';
+    renderItems(lastSearchResults, false);
+    toggleLoadMoreButton('search', !!currentNextPageToken);
+}
+
+function renderItems(items, append = false) {
+    const container = document.getElementById('results-container');
+    
+    const oldBtn = document.getElementById('load-more-btn');
+    if (oldBtn) oldBtn.remove();
+
+    if (!append && items.length === 0) {
+        container.innerHTML = '<div style="text-align:center;font-size:18px;">Ничего не найдено.</div>';
+        return;
+    }
+
+    items.forEach(item => {
+        const card = document.createElement('div');
+        card.className = 'video-card';
+
+        if (item.type === 'playlist') {
+            card.style.borderLeft = '5px solid #FF9800';
+            card.addEventListener('click', () => openPlaylist(item.id, item.title));
+        } else {
+            card.addEventListener('click', () => startVideo(item.id, item.title, item.thumbnail));
+        }
+
+        const img = document.createElement('img');
+        img.src = item.thumbnail || `https://i.ytimg.com/vi/${item.id}/mqdefault.jpg`;
+        img.onerror = function() { this.style.display = 'none'; };
+
+        const title = document.createElement('div');
+        title.className = 'video-title';
+        title.innerHTML = (item.type === 'playlist' ? '📁 [ПЛЕЙЛИСТ] ' : '') + (item.title || 'Видео');
+
+        card.appendChild(img);
+        card.appendChild(title);
+        container.appendChild(card);
+    });
+}
+
+function renderPlaylistItems(items) {
+    const target = document.getElementById('playlist-items');
+    
+    const oldBtn = document.getElementById('load-more-btn');
+    if (oldBtn) oldBtn.remove();
+
+    items.forEach(item => {
+        const card = document.createElement('div');
+        card.className = 'video-card';
+        card.addEventListener('click', () => startVideo(item.id, item.title, item.thumbnail));
+
+        const img = document.createElement('img');
+        img.src = item.thumbnail || `https://i.ytimg.com/vi/${item.id}/mqdefault.jpg`;
+        img.onerror = function() { this.style.display = 'none'; };
+
+        const title = document.createElement('div');
+        title.className = 'video-title';
+        title.textContent = item.title || 'Видео';
+
+        card.appendChild(img);
+        card.appendChild(title);
+        target.appendChild(card);
+    });
+}
+
+function renderDirectItems(items) {
+    const container = document.getElementById('results-container');
+    
+    const oldBtn = document.getElementById('load-more-btn');
+    if (oldBtn) oldBtn.remove();
+
+    if (items.length === 0) {
+        container.innerHTML = '<div style="text-align:center;font-size:18px;">Ничего не найдено по ссылке.</div>';
+        return;
+    }
+
+    items.forEach(item => {
+        const card = document.createElement('div');
+        card.className = 'video-card';
+        card.style.borderLeft = '5px solid #4CAF50';
+
+        card.addEventListener('click', () => startDirectVideo(item.id, item.title, item.thumbnail));
+
+        const img = document.createElement('img');
+        if (item.thumbnail) {
+            img.src = item.thumbnail;
+        } else {
+            img.style.display = 'none';
+        }
+        img.onerror = function() { this.style.display = 'none'; };
+
+        const title = document.createElement('div');
+        title.className = 'video-title';
+        title.innerHTML = '🌐 ' + (item.title || 'Видео по ссылке');
+
+        card.appendChild(img);
+        card.appendChild(title);
+        container.appendChild(card);
+    });
+}
+
+async function startDirectVideo(videoUrl, title, thumbnail) {
+    document.getElementById('search-screen').style.display = 'none';
+    document.getElementById('remote-screen').style.display = 'block';
+    
+    isYoutubePaused = false;
+    updateYoutubePauseButton();
+
+    const stateEl = document.getElementById('player-state');
+    if (stateEl) stateEl.textContent = '⏳ Загрузка потока...';
+    
+    try {
+        let url = ADRESSE_SEVER + '/control?action=load&val=' + encodeURIComponent(videoUrl);
+        if (title) url += '&title=' + encodeURIComponent(title);
+        if (thumbnail) url += '&thumbnail=' + encodeURIComponent(thumbnail);
+        
+        const res = await fetch(url);
+        const result = await res.json();
+
+        if (!result.ok) {
+            document.getElementById('remote-screen').style.display = 'none';
+            document.getElementById('search-screen').style.display = 'block';
+            alert('Не удалось запустить видео: ' + (result.error || 'Ошибка'));
+        }
+    } catch (err) {
+        document.getElementById('remote-screen').style.display = 'none';
+        document.getElementById('search-screen').style.display = 'block';
+        alert('Ошибка связи: ' + err.message);
+    }
+}
+
+function toggleLoadMoreButton(type, hasMore) {
+    const oldBtn = document.getElementById('load-more-btn');
+    if (oldBtn) oldBtn.remove();
+
+    if (!hasMore) return;
+
+    const btn = document.createElement('button');
+    btn.id = 'load-more-btn';
+    btn.className = 'search-btn';
+    btn.style.marginTop = '15px';
+    btn.style.background = '#333';
+    btn.textContent = '➕ Загрузить еще';
+
+    if (type === 'search') {
+        btn.onclick = () => doSearch(true);
+        document.getElementById('results-container').appendChild(btn);
+    } else {
+        btn.onclick = () => openPlaylist(currentPlaylistId, '', true);
+        document.getElementById('playlist-items').appendChild(btn);
+    }
+}
+
+// Запуск таймера проверки состояния
+setInterval(checkFullStatus, 2000);
+window.onload = checkFullStatus;
+
+// Обработка входящей ссылки из меню «Поделиться»
+window.addEventListener('DOMContentLoaded', () => {
+    const params = new URLSearchParams(window.location.search);
+    const sharedUrl = params.get('url') || params.get('text');
+    
+    if (sharedUrl) {
+        switchPortalMode('youtube');
+        
+        setTimeout(() => {
+            var queryInput = document.getElementById('query');
+            if (queryInput) {
+                queryInput.value = sharedUrl.trim();
+                
+                if (typeof doSearch === 'function') {
+                    doSearch();
+                }
+            }
+        }, 300);
+    }
+});
+</script>
+
+</body>
+</html>
