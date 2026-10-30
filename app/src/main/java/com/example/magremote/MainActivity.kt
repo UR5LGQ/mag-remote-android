@@ -1,43 +1,19 @@
 package com.example.magremote
 
+import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
 import android.webkit.JavascriptInterface
+import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.appcompat.app.AppCompatActivity
 import com.google.gson.Gson
-import org.schabi.newpipe.extractor.NewPipe
-import org.schabi.newpipe.extractor.downloader.Downloader
-import org.schabi.newpipe.extractor.downloader.Response
-import org.schabi.newpipe.extractor.services.youtube.YoutubeService
-import java.io.IOException
+import com.google.gson.JsonParser
 import java.net.HttpURLConnection
 import java.net.URL
+import java.net.URLEncoder
 import java.util.concurrent.Executors
-
-class CustomDownloader : Downloader() {
-    @Throws(IOException::class)
-    override fun execute(request: org.schabi.newpipe.extractor.downloader.Request): Response {
-        val url = request.url()
-        val httpMethod = request.httpMethod()
-        val headers = request.headers()
-        
-        val connection = URL(url).openConnection() as HttpURLConnection
-        connection.requestMethod = httpMethod
-        headers.forEach { (key, values) ->
-            values.forEach { value -> connection.addRequestProperty(key, value) }
-        }
-        
-        val code = connection.responseCode
-        val responseMessage = connection.responseMessage
-        val inputStream = if (code in 200..299) connection.inputStream else connection.errorStream
-        
-        val body = inputStream?.bufferedReader()?.use { it.readText() } ?: ""
-        val responseHeaders = connection.headerFields.mapValues { it.value }
-        
-        return Response(code, responseMessage, responseHeaders, body, connection.url.toString())
-    }
-}
 
 class MainActivity : AppCompatActivity() {
 
@@ -47,48 +23,86 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        
-        try {
-            NewPipe.init(CustomDownloader())
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
 
         webView = WebView(this).apply {
             settings.javaScriptEnabled = true
             settings.domStorageEnabled = true
+            settings.mediaPlaybackRequiresUserGesture = false
+            settings.mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
             webViewClient = WebViewClient()
+            // Подключаем мост для связи JavaScript с Kotlin
             addJavascriptInterface(WebAppInterface(this@MainActivity), "AndroidBridge")
         }
-        
+
         setContentView(webView)
-        webView.loadUrl("file:///android_asset/phone.html")
+        handleIntent(intent)
     }
 
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleIntent(intent)
+    }
+
+    private fun handleIntent(intent: Intent?) {
+        if (intent == null) {
+            webView.loadUrl("file:///android_asset/index.html")
+            return
+        }
+
+        val action = intent.action
+        val type = intent.type
+
+        // Обработка входящей ссылки из меню "Поделиться" (Share)
+        if (Intent.ACTION_SEND == action && type != null) {
+            if ("text/plain" == type) {
+                val sharedText = intent.getStringExtra(Intent.EXTRA_TEXT)
+                if (!sharedText.isNullOrEmpty()) {
+                    val encodedText = Uri.encode(sharedText)
+                    webView.loadUrl("file:///android_asset/index.html?url=$encodedText")
+                    return
+                }
+            }
+        }
+
+        webView.loadUrl("file:///android_asset/index.html")
+    }
+
+    // Мост для выполнения поиска прямо с телефона без нагрузки на сервер
     inner class WebAppInterface(private val activity: MainActivity) {
         @JavascriptInterface
         fun searchVideos(query: String, callbackName: String) {
             executor.execute {
                 try {
-                    val ytService = YoutubeService(0)
-                    val searchExtractor = ytService.getSearchExtractor(query)
-                    searchExtractor.fetchPage()
-                    
-                    val resultsList = searchExtractor.initialPage.items.take(10).map { item ->
-                        val videoTitle = try { item.name } catch (e: Exception) { "Видео" }
-                        val videoUrl = try { item.url } catch (e: Exception) { "" }
-                        val thumbUrl = try { item.thumbnailUrl } catch (e: Exception) { "" }
+                    // Делаем легкий HTTP-запрос к публичному открытому API Invidious прямо с телефона
+                    val encodedQuery = URLEncoder.encode(query, "UTF-8")
+                    val url = URL("https://vid.puffyan.us/api/v1/search?q=$encodedQuery")
+                    val connection = url.openConnection() as HttpURLConnection
+                    connection.requestMethod = "GET"
+                    connection.connectTimeout = 5000
 
-                        mapOf(
-                            "id" to videoUrl.substringAfter("v=").substringBefore("&"),
-                            "title" to videoTitle,
-                            "thumbnail" to thumbUrl,
-                            "type" to "video"
-                        )
+                    val responseString = connection.inputStream.bufferedReader().use { it.readText() }
+                    val jsonArray = JsonParser.parseString(responseString).asJsonArray
+                    val resultsList = mutableListOf>()
+
+                    for (element in jsonArray) {
+                        val obj = element.asJsonObject
+                        if (obj.get("type")?.asString == "video") {
+                            val videoId = obj.get("videoId")?.asString ?: ""
+                            val title = obj.get("title")?.asString ?: "Видео"
+                            resultsList.add(
+                                mapOf(
+                                    "id" to videoId,
+                                    "title" to title,
+                                    "thumbnail" to "https://i.ytimg.com/vi/$videoId/mqdefault.jpg",
+                                    "type" to "video"
+                                )
+                            )
+                            if (resultsList.size >= 12) break
+                        }
                     }
 
                     val jsonResult = gson.toJson(resultsList)
-                    
                     activity.runOnUiThread {
                         webView.evaluateJavascript("javascript:$callbackName($jsonResult)", null)
                     }
