@@ -43,7 +43,7 @@ dependencies {
     implementation 'com.google.android.material:material:1.11.0'
 
     // Используем актуальную и стабильную версию NewPipeExtractor
-    implementation 'com.github.teamnewpipe:NewPipeExtractor:v0.24.5'
+    implementation 'com.github.teamnewpipe:NewPipeExtractor:v0.25.0'
     
     // Gson для сериализации
     implementation 'com.google.code.gson:gson:2.10.1'
