@@ -79,7 +79,7 @@ class MainActivity : AppCompatActivity() {
 
                     val responseString = connection.inputStream.bufferedReader().use { it.readText() }
                     val jsonArray = JsonParser.parseString(responseString).asJsonArray
-                    val resultsList = mutableListOf>()
+                    val resultsList = mutableListOf<HashMap<String, String>>()
 
                     for (element in jsonArray) {
                         val obj = element.asJsonObject
@@ -87,15 +87,13 @@ class MainActivity : AppCompatActivity() {
                             val videoId = obj.get("videoId")?.asString ?: ""
                             val title = obj.get("title")?.asString ?: "Видео"
                             
-                            // Явно указываем типы mapOf<String, String>
-                            resultsList.add(
-                                mapOf<String, String>(
-                                    "id" to videoId,
-                                    "title" to title,
-                                    "thumbnail" to "https://i.ytimg.com/vi/$videoId/mqdefault.jpg",
-                                    "type" to "video"
-                                )
-                            )
+                            val item = HashMap<String, String>()
+                            item["id"] = videoId
+                            item["title"] = title
+                            item["thumbnail"] = "https://i.ytimg.com/vi/$videoId/mqdefault.jpg"
+                            item["type"] = "video"
+                            
+                            resultsList.add(item)
                             if (resultsList.size >= 12) break
                         }
                     }
